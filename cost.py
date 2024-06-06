@@ -24,7 +24,7 @@ class Model:
 
         # Set inital conditions
         self.fleet = Counter({}) # Dictionary of Vehicles & Number Owned
-        self.spent = 0
+        self.purchase_costs = 0
 
         return
 
@@ -32,7 +32,7 @@ class Model:
         df_vehicles = self.df['vehicles']
         vehicle = Vehicle(vehicle_ID, fuel_type)
         vehicle_details = df_vehicles[df_vehicles['ID'] == vehicle_ID]
-        self.spent += vehicle_details['Cost ($)'].values[0]
+        self.purchase_costs += vehicle_details['Cost ($)'].values[0]
         self.fleet.update({vehicle : 1})
         return 
          
@@ -73,6 +73,7 @@ def main():
     vehicle = model.purchase_vehicle('BEV_S3_2023', 'Electricity') 
     vehicle = model.purchase_vehicle('BEV_S3_2023', 'Banana') 
     model.list_fleet()
+    print(model.purchase_costs)
 
     """
     Variables to Consider / Implement:
