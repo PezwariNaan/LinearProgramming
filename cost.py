@@ -5,6 +5,33 @@ from pathlib import Path
 from os import getenv
 from collections import Counter
 
+###################################################################
+class DF:
+    def __init__(self):
+        self.create_df()
+        pd.set_option('display.max_columns', 10)
+        pd.set_option('display.max_rows', 200)
+        return 
+
+    def create_df(self):
+        user = getenv('USER')
+        dir = Path(f"/home/{user}/Documents/Competitions/Shell/dataset/CSV_Files/")
+        file_list = [file for file in dir.iterdir()]
+        file_list.remove(file_list[0])
+        for file in file_list:
+            df_name = str(file.stem) # Filename no extension
+            df = pd.read_csv(file)
+            df.reset_index(inplace = True, drop = True)
+            setattr(self, df_name, df)
+        return 
+
+    def list_df_keys(self):
+        attributes = [attr for attr in dir(self) if not callable(getattr(self, attr)) and not attr.startswith("__")]
+        for attr in attributes:
+            print(attr)
+        return
+
+###################################################################
 class Vehicle:
     def __init__(self, ID:str, fuel_type:str):
         self.fuel_type = fuel_type
@@ -17,19 +44,17 @@ class Vehicle:
     def __eq__(self, other):
         return (self.ID, self.fuel_type == other.ID, other.fuel_type)
 
+###################################################################
 class Model:
-    def __init__(self):
-        # Load dataframes on initialisation
-        self.load_dataframes()
-
+    def __init__(self, dataframes: DF):
         # Set inital conditions
         self.fleet = Counter({}) # Dictionary of Vehicles & Number Owned
         self.purchase_costs = 0
-
+        self.dataframes = dataframes
         return
 
     def purchase_vehicle(self, vehicle_ID:str, fuel_type:str):
-        df_vehicles = self.df['vehicles']
+        df_vehicles = self.dataframes.vehicles
         vehicle = Vehicle(vehicle_ID, fuel_type)
         vehicle_details = df_vehicles[df_vehicles['ID'] == vehicle_ID]
         self.purchase_costs += vehicle_details['Cost ($)'].values[0]
@@ -42,38 +67,16 @@ class Model:
             print(f"{vehicle[0].ID}: {vehicle[1]} ({vehicle[0].fuel_type})")
         return
 
-    def list_df_keys(self):
-        for key in self.df.keys():
-            print(key)
-        return
-
-    def get_df(self, df_key):
-        return self.df[df_key]
-
-    def load_dataframes(self):
-        self.user = getenv('USER')
-        self.dir = Path(f"/home/{self.user}/Documents/Competitions/Shell/dataset/CSV_Files/")
-        self.file_list = [file for file in self.dir.iterdir()]
-        self.file_list.remove(self.file_list[0])
-        self.df = {}
-        for file in self.file_list:
-            # Set the filename as the key, and the dataframe as the value
-            self.df[str(file.name).replace('.csv' , '')] = pd.read_csv(file)
-            self.df[str(file.name).replace('.csv' , '')].reset_index(
-                                                           inplace = True,
-                                                           drop = True)
-        return 
-
+####################################################################
 def main():
-    pd.set_option('display.max_columns', 10)
-    pd.set_option('display.max_rows', 200)
 
-    model = Model()
-    vehicle = model.purchase_vehicle('BEV_S3_2023', 'Electricity') 
-    vehicle = model.purchase_vehicle('BEV_S3_2023', 'Electricity') 
-    vehicle = model.purchase_vehicle('BEV_S3_2023', 'Banana') 
+    dataframes = DF()
+    model = Model(dataframes)
+    model.purchase_vehicle('BEV_S2_2023', 'Electrical')
+    model.purchase_vehicle('BEV_S2_2023', 'Electrical')
+    model.purchase_vehicle('BEV_S4_2023', 'Electrical')
+    model.purchase_vehicle('BEV_S4_2023', 'Banana')
     model.list_fleet()
-    print(model.purchase_costs)
 
     """
     Variables to Consider / Implement:
