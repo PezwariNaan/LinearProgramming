@@ -25,7 +25,6 @@ class DF:
             setattr(self, df_name, df)
         return 
 
-
 ###################################################################
 class Vehicle:
     def __init__(self, ID:str, fuel_type:str):
@@ -41,6 +40,22 @@ class Vehicle:
 
 ###################################################################
 class Model:
+    class YearlyRequirements:
+        def __init__(self, demand_df, carbon_emissions_df, current_year):
+            self.distance_km = demand_df[demand_df['Year'] == \
+                    current_year]['Demand (km)'].values
+
+            self.distance = demand_df[demand_df['Year'] == \
+                    current_year]['Distance'].values
+
+            self.size = demand_df[demand_df['Year'] == \
+                    current_year]['Size'].values
+
+            self.emission_limit = carbon_emissions_df[
+                    carbon_emissions_df['Year'] == current_year]\
+            .values[0][1]
+            return
+
     def __init__(self, dataframes: DF):
         # Easy Access to dataframes
         self.vehicles_df = dataframes.vehicles
@@ -53,8 +68,13 @@ class Model:
         # Set inital conditions
         self.current_year = 2023
         self.fleet = Counter({}) # Dictionary of Vehicles & Number Owned
-        self.costs = 0
-        self.emissions = 0
+        self.yearly_requirements = self.YearlyRequirements(
+                                                self.demand_df,
+                                                self.carbon_emissions_df,
+                                                self.current_year
+                                                )
+        self.total_costs = 0
+        self.total_emissions = 0
         return
 
     def purchase_vehicle(self, vehicle_ID: str, fuel_type: str):
@@ -66,7 +86,7 @@ class Model:
                 return 
 
             vehicle = Vehicle(vehicle_ID, fuel_type)
-            self.costs += vehicle_details['Cost ($)'].values[0]
+            self.total_costs += vehicle_details['Cost ($)'].values[0]
             self.fleet.update({vehicle : 1})
             return 
 
@@ -93,7 +113,7 @@ class Model:
                         ['Resale Value %'].item()
 
                 resale_value = (resale_rate / 100) * vehicle_purchase_price
-                self.costs -= resale_value
+                self.total_costs -= resale_value
             else:
                 print("Vehicle is not in Fleet")
                 return 
@@ -103,16 +123,53 @@ class Model:
             return 
 
     def use_vehicle(self, vehicle_ID: str, fuel_type: str, distance: int):
-        """
-        Distance 
-        Fuel Used        = Consumption Rate * Distance
-        Fuel Cost        = Fuel Used * Fuel Cost per Unit
-        Carbon Emissions = Fuel Used * Carbon Emissions per Unit
-        """
-        # Fuel details
-        
-        return 
+        try:
+            # Check vehicle is valid
+            vehicle = Vehicle(vehicle_ID, fuel_type)
+            if vehicle not in self.fleet:
+                print(f"Vehicle {vehicle_ID} not in fleet.")
+                return 
 
+            vehicle_fuel_details = self.vehicle_fuels_df[
+                (self.vehicle_fuels_df['ID'] == vehicle_ID) &
+                (self.vehicle_fuels_df['Fuel'] == fuel_type)
+            ]
+
+            if vehicle_fuel_details.empty:
+                print(f"No fuel details found for{vehicle_ID} with {fuel_type}.")
+                return 
+
+            # Units and variabels
+            consumption_rate = \
+                    vehicle_fuel_details['Consumption (unit_fuel/km)'].item()
+
+            # Fuel Price = filter(current year + fuel)
+            fuel_price = self.fuels_df[
+                    (self.fuels_df['Fuel'] == fuel_type) &
+                    (self.fuels_df['Year'] == self.current_year)
+            ].values[0][3] # Index the returned matrix
+
+            # Emission Rate = (current year + fuel)
+            emission_rate = self.fuels_df[
+                    (self.fuels_df['Fuel'] == fuel_type) &
+                    (self.fuels_df['Year'] == self.current_year)
+            ].values[0][2] # Index the returned matrix
+
+            fuel_used = consumption_rate * distance
+
+            fuel_cost = fuel_used * fuel_price
+
+            emissions = emission_rate * distance
+
+            # Add to totals
+            self.total_costs += fuel_cost
+            self.total_emissions += emissions
+            return
+
+        except Exception as e:
+            print(f"Error: {e}")
+            return 
+        
     def insure(self, vehicle_ID: str):
         vehicle_details = self.vehicles_df[self.vehicles_df['ID'] == vehicle_ID]
 
@@ -129,6 +186,7 @@ class Model:
                 ['Insurance Cost %'].item()
 
         insurance_cost = (insurance_rate / 100) * vehicle_purchase_price
+        self.total_costs += insurance_cost
         return
         
     def maintain(self, vehicle_ID: str):
@@ -147,6 +205,7 @@ class Model:
                 ['Maintenance Cost %'].item()
 
         maintenance_cost = (maintenance_rate / 100) * vehicle_purchase_price
+        self.total_costs += maintenance_cost 
         return
 
 ##################### CLASS HELPER FUNCTIONS #######################
@@ -165,12 +224,23 @@ class Model:
 def main():
     dataframes = DF()
     model = Model(dataframes)
-
+    #yearly_requirements = model.yearly_requirements
+    print(model.yearly_requirements.distance_km)
+    print(model.yearly_requirements.distance)
+    print(model.yearly_requirements.size)
+    print(model.yearly_requirements.emission_limit)
 
     """
+    model.purchase_vehicle('BEV_S2_2023', 'Electricity')
+    print(model.total_costs, model.total_emissions)
+    model.use_vehicle('BEV_S2_2023', 'Electricity', 500000)
+    print(model.total_costs, model.total_emissions)
+    model.sell_vehicle('BEV_S2_2023', 'Electricity')
+    print(model.total_costs, model.total_emissions)
+    model.insure('BEV_S2_2023')
+    model.maintain('BEV_S2_2023')
+    print(model.total_costs, model.total_emissions)
     model.purchase_vehicle('BEV_S2_2023', 'Electrical')
-    model.purchase_vehicle('BEV_S2_2023', 'Electrical')
-    model.sell_vehicle('BEV_S2_2023', 'Electrical')
     model.sell_vehicle('BEV_S2_2023', 'Electrical')
 
     Considerations | Implementations:
