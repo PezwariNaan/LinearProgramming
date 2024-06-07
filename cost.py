@@ -27,10 +27,12 @@ class DF:
 
 ###################################################################
 class Vehicle:
-    def __init__(self, ID:str, fuel_type:str):
+    def __init__(self, ID: str, fuel_type: str, vehicles_df):
         self.fuel_type = fuel_type
         self.ID = ID
-        return 
+        self.details = vehicles_df[vehicles_df['ID'] == ID]
+        self.purchase_year = self.details['Year'].values[0] if not self.details.empty else None
+        self.purchase_price = self.details['Cost ($)'].values[0] if not self.details.empty else None
 
     def __hash__(self):
         return hash((self.ID, self.fuel_type))
@@ -42,18 +44,10 @@ class Vehicle:
 class Model:
     class YearlyRequirements:
         def __init__(self, demand_df, carbon_emissions_df, current_year):
-            self.distance_km = demand_df[demand_df['Year'] == \
-                    current_year]['Demand (km)'].values
-
-            self.distance = demand_df[demand_df['Year'] == \
-                    current_year]['Distance'].values
-
-            self.size = demand_df[demand_df['Year'] == \
-                    current_year]['Size'].values
-
-            self.emission_limit = carbon_emissions_df[
-                    carbon_emissions_df['Year'] == current_year]\
-            .values[0][1]
+            self.distance_km = demand_df[demand_df['Year'] == current_year]['Demand (km)'].values
+            self.distance = demand_df[demand_df['Year'] == current_year]['Distance'].values
+            self.size = demand_df[demand_df['Year'] == current_year]['Size'].values
+            self.emission_limit = carbon_emissions_df[carbon_emissions_df['Year'] == current_year]['Carbon emission CO2/kg'].values[0]
             return
 
     def __init__(self, dataframes: DF):
@@ -65,14 +59,13 @@ class Model:
         self.cost_profiles_df = dataframes.cost_profiles
         self.carbon_emissions_df = dataframes.carbon_emissions
 
-        # Set inital conditions
+        # Set initial conditions
         self.current_year = 2023
-        self.fleet = Counter({}) # Dictionary of Vehicles & Number Owned
+        self.fleet = Counter({})
         self.yearly_requirements = self.YearlyRequirements(
-                                                self.demand_df,
-                                                self.carbon_emissions_df,
-                                                self.current_year
-                                                )
+                                self.demand_df, 
+                                self.carbon_emissions_df, 
+                                self.current_year)
         self.total_costs = 0
         self.total_emissions = 0
         return
@@ -85,9 +78,9 @@ class Model:
                 print(f"Vehicle {vehicle_ID} not found.")
                 return 
 
-            vehicle = Vehicle(vehicle_ID, fuel_type)
-            self.total_costs += vehicle_details['Cost ($)'].values[0]
-            self.fleet.update({vehicle : 1})
+            vehicle = Vehicle(vehicle_ID, fuel_type, self.vehicles_df)
+            self.total_costs += vehicle.purchase_price
+            self.fleet.update({vehicle: 1})
             return 
 
         except Exception as e:
@@ -96,24 +89,13 @@ class Model:
 
     def sell_vehicle(self, vehicle_ID: str, fuel_type: str):
         try:
-            vehicle = Vehicle(vehicle_ID, fuel_type)
+            vehicle = Vehicle(vehicle_ID, fuel_type, self.vehicles_df)
             if vehicle in self.fleet:
-                vehicle_details = self.vehicles_df[self.vehicles_df['ID'] == vehicle_ID]
-
-                vehicle_purchase_year = vehicle_details['Year'].values[0]
-
-                vehicle_age = self.current_year - vehicle_purchase_year
-
-                vehicle_purchase_price = vehicle_details['Cost ($)'].values[0]
-
-                # Retrieve the devalue rate from the cost_profiles dataframe
-                # Based on the age of the vehicle. 
-                resale_rate = self.cost_profiles_df[self.cost_profiles_df\
-                        ['End of Year'] == vehicle_age + 1]\
-                        ['Resale Value %'].item()
-
-                resale_value = (resale_rate / 100) * vehicle_purchase_price
+                resale_value = self.calculate_resale_value(vehicle)
                 self.total_costs -= resale_value
+                self.fleet.subtract({vehicle: 1})
+                if self.fleet[vehicle] == 0:
+                    del self.fleet[vehicle]
             else:
                 print("Vehicle is not in Fleet")
                 return 
@@ -122,131 +104,75 @@ class Model:
             print(f"Error: {e}")
             return 
 
+
     def use_vehicle(self, vehicle_ID: str, fuel_type: str, distance: int):
         try:
-            # Check vehicle is valid
-            vehicle = Vehicle(vehicle_ID, fuel_type)
+            vehicle = Vehicle(vehicle_ID, fuel_type, self.vehicles_df)
             if vehicle not in self.fleet:
                 print(f"Vehicle {vehicle_ID} not in fleet.")
                 return 
 
             vehicle_fuel_details = self.vehicle_fuels_df[
-                (self.vehicle_fuels_df['ID'] == vehicle_ID) &
+                (self.vehicle_fuels_df['ID'] == vehicle_ID) & 
                 (self.vehicle_fuels_df['Fuel'] == fuel_type)
             ]
 
             if vehicle_fuel_details.empty:
-                print(f"No fuel details found for{vehicle_ID} with {fuel_type}.")
+                print(f"No fuel details found for {vehicle_ID} with {fuel_type}.")
                 return 
 
-            # Units and variabels
-            consumption_rate = \
-                    vehicle_fuel_details['Consumption (unit_fuel/km)'].item()
-
-            # Fuel Price = filter(current year + fuel)
-            fuel_price = self.fuels_df[
-                    (self.fuels_df['Fuel'] == fuel_type) &
-                    (self.fuels_df['Year'] == self.current_year)
-            ].values[0][3] # Index the returned matrix
-
-            # Emission Rate = (current year + fuel)
-            emission_rate = self.fuels_df[
-                    (self.fuels_df['Fuel'] == fuel_type) &
-                    (self.fuels_df['Year'] == self.current_year)
-            ].values[0][2] # Index the returned matrix
+            consumption_rate = vehicle_fuel_details['Consumption (unit_fuel/km)'].item()
+            fuel_price = self.fuels_df[(self.fuels_df['Fuel'] == fuel_type) & (self.fuels_df['Year'] == self.current_year)].values[0][3]
+            emission_rate = self.fuels_df[(self.fuels_df['Fuel'] == fuel_type) & (self.fuels_df['Year'] == self.current_year)].values[0][2]
 
             fuel_used = consumption_rate * distance
-
             fuel_cost = fuel_used * fuel_price
-
             emissions = emission_rate * distance
 
-            # Add to totals
             self.total_costs += fuel_cost
             self.total_emissions += emissions
+
             return
 
         except Exception as e:
             print(f"Error: {e}")
             return 
-        
+
     def insure(self, vehicle_ID: str):
-        vehicle_details = self.vehicles_df[self.vehicles_df['ID'] == vehicle_ID]
-
-        vehicle_purchase_year = vehicle_details['Year'].values[0]
-
-        vehicle_age = self.current_year - vehicle_purchase_year
-
-        vehicle_purchase_price = vehicle_details['Cost ($)'].values[0]
-
-        # Retrieve the insurance rate from the cost_profiles dataframe
-        # Based on the age of the vehicle. 
-        insurance_rate = self.cost_profiles_df[self.cost_profiles_df\
-                ['End of Year'] == vehicle_age + 1]\
-                ['Insurance Cost %'].item()
-
-        insurance_cost = (insurance_rate / 100) * vehicle_purchase_price
-        self.total_costs += insurance_cost
+        self.add_cost(vehicle_ID, 'Insurance Cost %')
         return
         
     def maintain(self, vehicle_ID: str):
-        vehicle_details = self.vehicles_df[self.vehicles_df['ID'] == vehicle_ID]
-
-        vehicle_purchase_year = vehicle_details['Year'].values[0]
-
-        vehicle_age = self.current_year - vehicle_purchase_year
-
-        vehicle_purchase_price = vehicle_details['Cost ($)'].values[0]
-
-        # Retrieve the maintenance rate from the cost_profiles dataframe
-        # Based on the age of the vehicle. 
-        maintenance_rate = self.cost_profiles_df[self.cost_profiles_df\
-                ['End of Year'] == vehicle_age + 1]\
-                ['Maintenance Cost %'].item()
-
-        maintenance_cost = (maintenance_rate / 100) * vehicle_purchase_price
-        self.total_costs += maintenance_cost 
+        self.add_cost(vehicle_ID, 'Maintenance Cost %')
         return
 
-##################### CLASS HELPER FUNCTIONS #######################
+
+    ##################### CLASS HELPER FUNCTIONS #######################
     def list_fleet(self):
         print("Vehicles Currently in Fleet:")
         for vehicle, count in self.fleet.items():
             print(f"{vehicle.ID}: {count} ({vehicle.fuel_type})")
         return
 
-    def tidy_fleet(self):
-        # Remove any item in self.fleet that's value is 0
-        self.fleet = Counter({k: v for k, v in self.fleet.items() if v != 0})
-        return 
+    def add_cost(self, vehicle_ID: str, cost_type: str):
+        vehicle_details = self.vehicles_df[self.vehicles_df['ID'] == vehicle_ID]
+        vehicle_purchase_year = vehicle_details['Year'].values[0]
+        vehicle_age = self.current_year - vehicle_purchase_year
+        vehicle_purchase_price = vehicle_details['Cost ($)'].values[0]
+        rate = self.cost_profiles_df[self.cost_profiles_df['End of Year'] == vehicle_age + 1][cost_type].item()
+        cost = (rate / 100) * vehicle_purchase_price
+        self.total_costs += cost
+
+    def calculate_resale_value(self, vehicle):
+        vehicle_age = self.current_year - vehicle.purchase_year
+        resale_rate = self.cost_profiles_df[self.cost_profiles_df['End of Year'] == vehicle_age + 1]['Resale Value %'].item()
+        resale_value = (resale_rate / 100) * vehicle.purchase_price
+        return resale_value
 
 ####################################################################
 def main():
     dataframes = DF()
     model = Model(dataframes)
-    #yearly_requirements = model.yearly_requirements
-    print(model.yearly_requirements.distance_km)
-    print(model.yearly_requirements.distance)
-    print(model.yearly_requirements.size)
-    print(model.yearly_requirements.emission_limit)
-
-    """
-    model.purchase_vehicle('BEV_S2_2023', 'Electricity')
-    print(model.total_costs, model.total_emissions)
-    model.use_vehicle('BEV_S2_2023', 'Electricity', 500000)
-    print(model.total_costs, model.total_emissions)
-    model.sell_vehicle('BEV_S2_2023', 'Electricity')
-    print(model.total_costs, model.total_emissions)
-    model.insure('BEV_S2_2023')
-    model.maintain('BEV_S2_2023')
-    print(model.total_costs, model.total_emissions)
-    model.purchase_vehicle('BEV_S2_2023', 'Electrical')
-    model.sell_vehicle('BEV_S2_2023', 'Electrical')
-
-    Considerations | Implementations:
-        end_year = 2038
-        How to calculate distance? 
-    """
 
 if __name__ == '__main__':
     main()
