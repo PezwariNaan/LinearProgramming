@@ -26,29 +26,38 @@ class DF:
         return 
 
 ###################################################################
-class Vehicle:
-    def __init__(self, ID: str, fuel_type: str, vehicles_df):
-        self.fuel_type = fuel_type
-        self.ID = ID
-        self.details = vehicles_df[vehicles_df['ID'] == ID]
-        self.purchase_year = self.details['Year'].values[0] if not self.details.empty else None
-        self.purchase_price = self.details['Cost ($)'].values[0] if not self.details.empty else None
-
-    def __hash__(self):
-        return hash((self.ID, self.fuel_type))
-    
-    def __eq__(self, other):
-        return (self.ID, self.fuel_type == other.ID, other.fuel_type)
-
-###################################################################
 class Model:
     class YearlyRequirements:
         def __init__(self, demand_df, carbon_emissions_df, current_year):
-            self.distance_km = demand_df[demand_df['Year'] == current_year]['Demand (km)'].values
-            self.distance = demand_df[demand_df['Year'] == current_year]['Distance'].values
-            self.size = demand_df[demand_df['Year'] == current_year]['Size'].values
-            self.emission_limit = carbon_emissions_df[carbon_emissions_df['Year'] == current_year]['Carbon emission CO2/kg'].values[0]
+            ######## Distance Demands #########
+            self.demand = demand_df[demand_df['Year'] == current_year]
+            self.demand_km = self.demand['Demand (km)'].values
+            
+            # Pivot Table to create demand_matrix
+            self.demand_matrix = self.demand.pivot(index='Size', columns='Distance', values='Demand (km)').values
+            
+            self.demand_matrix.flat[:] = self.demand_km
+
+            ######## Carbon Emission Limits ########
+            self.emission_limit = carbon_emissions_df[
+                    carbon_emissions_df['Year']== 2023]['Carbon emission CO2/kg'
+                                                        ].item()
+            
             return
+
+    class Vehicle:
+        def __init__(self, ID: str, fuel_type: str, vehicles_df):
+            self.fuel_type = fuel_type
+            self.ID = ID
+            self.details = vehicles_df[vehicles_df['ID'] == ID]
+            self.purchase_year = self.details['Year'].values[0] if not self.details.empty else None
+            self.purchase_price = self.details['Cost ($)'].values[0] if not self.details.empty else None
+
+        def __hash__(self):
+            return hash((self.ID, self.fuel_type))
+        
+        def __eq__(self, other):
+            return (self.ID, self.fuel_type == other.ID, other.fuel_type)
 
     def __init__(self, dataframes: DF):
         # Easy Access to dataframes
@@ -63,9 +72,9 @@ class Model:
         self.current_year = 2023
         self.fleet = Counter({})
         self.yearly_requirements = self.YearlyRequirements(
-                                self.demand_df, 
-                                self.carbon_emissions_df, 
-                                self.current_year)
+                                   self.demand_df, 
+                                   self.carbon_emissions_df, 
+                                   self.current_year)
         self.total_costs = 0
         self.total_emissions = 0
         return
@@ -146,7 +155,6 @@ class Model:
         self.add_cost(vehicle_ID, 'Maintenance Cost %')
         return
 
-
     ##################### CLASS HELPER FUNCTIONS #######################
     def list_fleet(self):
         print("Vehicles Currently in Fleet:")
@@ -169,10 +177,30 @@ class Model:
         resale_value = (resale_rate / 100) * vehicle.purchase_price
         return resale_value
 
+######################## RUN THE PROGRAM ###########################
+    def run():
+        # Decide What to Buy
+        """
+            Must be able to satisfy yearly limit for all 16 demands:
+               S1 S2 S3 S4
+            D1 x  x  x  x
+            D2 x  x  x  x
+            D3 x  x  x  x
+            D4 x  x  x  x
+        """
+         
+
+
+        # Decide What to Use
+
+        # Decide What to Sell 
+
 ####################################################################
 def main():
     dataframes = DF()
     model = Model(dataframes)
+    print(model.yearly_requirements.emission_limit)
+
 
 if __name__ == '__main__':
     main()
