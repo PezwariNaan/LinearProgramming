@@ -34,15 +34,12 @@ class Model:
             self.demand_km = self.demand['Demand (km)'].values
             
             # Pivot Table to create demand_matrix
-            self.demand_matrix = self.demand.pivot(index='Size', columns='Distance', values='Demand (km)').values
-            
-            self.demand_matrix.flat[:] = self.demand_km
+            self.demand_matrix = self.demand.pivot(index='Size', columns='Distance', values='Demand (km)')
 
             ######## Carbon Emission Limits ########
             self.emission_limit = carbon_emissions_df[
                     carbon_emissions_df['Year']== 2023]['Carbon emission CO2/kg'
                                                         ].item()
-            
             return
 
     class Vehicle:
@@ -50,8 +47,12 @@ class Model:
             self.fuel_type = fuel_type
             self.ID = ID
             self.details = vehicles_df[vehicles_df['ID'] == ID]
-            self.purchase_year = self.details['Year'].values[0] if not self.details.empty else None
-            self.purchase_price = self.details['Cost ($)'].values[0] if not self.details.empty else None
+            self.purchase_year = self.details['Year'].values[0] \
+                    if not self.details.empty else None
+            self.purchase_price = self.details['Cost ($)'].values[0] \
+                    if not self.details.empty else None
+            self.yearly_range = self.details['Yearly range (km)'] \
+                    if not self.details.empty else None
 
         def __hash__(self):
             return hash((self.ID, self.fuel_type))
@@ -131,8 +132,10 @@ class Model:
                 return 
 
             consumption_rate = vehicle_fuel_details['Consumption (unit_fuel/km)'].item()
-            fuel_price = self.fuels_df[(self.fuels_df['Fuel'] == fuel_type) & (self.fuels_df['Year'] == self.current_year)].values[0][3]
-            emission_rate = self.fuels_df[(self.fuels_df['Fuel'] == fuel_type) & (self.fuels_df['Year'] == self.current_year)].values[0][2]
+            fuel_price = self.fuels_df[(self.fuels_df['Fuel'] == fuel_type) & \
+                    (self.fuels_df['Year'] == self.current_year)].values[0][3]
+            emission_rate = self.fuels_df[(self.fuels_df['Fuel'] == fuel_type) & \
+                    (self.fuels_df['Year'] == self.current_year)].values[0][2]
 
             fuel_used = consumption_rate * distance
             fuel_cost = fuel_used * fuel_price
@@ -140,7 +143,6 @@ class Model:
 
             self.total_costs += fuel_cost
             self.total_emissions += emissions
-
             return
 
         except Exception as e:
@@ -179,28 +181,11 @@ class Model:
 
 ######################## RUN THE PROGRAM ###########################
     def run():
-        # Decide What to Buy
-        """
-            Must be able to satisfy yearly limit for all 16 demands:
-               S1 S2 S3 S4
-            D1 x  x  x  x
-            D2 x  x  x  x
-            D3 x  x  x  x
-            D4 x  x  x  x
-        """
-         
-
-
-        # Decide What to Use
-
-        # Decide What to Sell 
-
+        pass
 ####################################################################
 def main():
     dataframes = DF()
     model = Model(dataframes)
-    print(model.yearly_requirements.emission_limit)
-
 
 if __name__ == '__main__':
     main()
