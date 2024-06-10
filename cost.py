@@ -180,12 +180,13 @@ class Model:
         return resale_value
 
 ######################## RUN THE PROGRAM ###########################
-    def run():
+    def run_pulp():
         pass
 ####################################################################
 def main():
     dataframes = DF()
     model = Model(dataframes)
+    print(model.yearly_requirements.demand_matrix.loc['S1', 'D1'])
 
 if __name__ == '__main__':
     main()
