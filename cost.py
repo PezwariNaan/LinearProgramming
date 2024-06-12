@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import pandas as pd
-import gymnasium as gym 
 from pathlib import Path
 from os import getenv
 from collections import Counter
@@ -45,14 +44,23 @@ class Model:
 
     class Vehicle:
         def __init__(self, ID: str, fuel_type: str, vehicles_df):
-            self.fuel_type = fuel_type
             self.ID = ID
+            self.fuel_type = fuel_type
             self.details = vehicles_df[vehicles_df['ID'] == ID]
-            self.purchase_year = self.details['Year'].values[0] \
+
+            self.purchase_year = self.details['Year'].item() \
                     if not self.details.empty else None
-            self.purchase_price = self.details['Cost ($)'].values[0] \
+
+            self.purchase_price = self.details['Cost ($)'].item() \
                     if not self.details.empty else None
-            self.yearly_range = self.details['Yearly range (km)'] \
+
+            self.yearly_range = self.details['Yearly range (km)'].item() \
+                    if not self.details.empty else None
+
+            self.size_bucket = self.details['Size'].item() \
+                    if not self.details.empty else None
+
+            self.distance_bucket = self.details['Distance'].item() \
                     if not self.details.empty else None
 
         def __hash__(self):
@@ -89,7 +97,7 @@ class Model:
                 print(f"Vehicle {vehicle_ID} not found.")
                 return 
 
-            vehicle = Vehicle(vehicle_ID, fuel_type, self.vehicles_df)
+            vehicle = self.Vehicle(vehicle_ID, fuel_type, self.vehicles_df)
             self.total_costs += vehicle.purchase_price
             self.fleet.update({vehicle: 1})
             return 
@@ -187,6 +195,14 @@ class Model:
 def main():
     dataframes = DF()
     model = Model(dataframes)
+    model.purchase_vehicle('BEV_S1_2023', 'Electrical')
+    for i in model.fleet:
+        print(i.ID)
+        print(i.fuel_type)
+        print(i.purchase_year)
+        print(i.yearly_range)
+        print(i.size_bucket)
+        print(i.distance_bucket)
 
 if __name__ == '__main__':
     main()
