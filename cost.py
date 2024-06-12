@@ -200,20 +200,12 @@ class Model:
         resale_value = (resale_rate / 100) * vehicle.purchase_price
         return resale_value
 
-######################## RUN THE PROGRAM ###########################
-    def run():
-        pass
 ####################################################################
 def main():
     dataframes = DF()
     model = Model(dataframes)
-    model.purchase_vehicle('Diesel_S3_2023', 'HVO')
-
-    m = model.yearly_requirements.demand_matrix
-    print(m)
-    model.use_vehicle('Diesel_S3_2023', 'HVO', 100)
-    print(m)
-
+    fuel = model.vehicle_fuels_df
+    print(fuel[fuel['ID'] == 'LNG_S1_2023']['Fuel'].values)
 if __name__ == '__main__':
     main()
 
