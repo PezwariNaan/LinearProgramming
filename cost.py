@@ -108,7 +108,7 @@ class Model:
 
     def sell_vehicle(self, vehicle_ID: str, fuel_type: str):
         try:
-            vehicle = Vehicle(vehicle_ID, fuel_type, self.vehicles_df)
+            vehicle = self.Vehicle(vehicle_ID, fuel_type, self.vehicles_df)
             if vehicle in self.fleet:
                 resale_value = self.calculate_resale_value(vehicle)
                 self.total_costs -= resale_value
@@ -123,10 +123,9 @@ class Model:
             print(f"Error: {e}")
             return 
 
-
     def use_vehicle(self, vehicle_ID: str, fuel_type: str, distance: int):
         try:
-            vehicle = Vehicle(vehicle_ID, fuel_type, self.vehicles_df)
+            vehicle = self.Vehicle(vehicle_ID, fuel_type, self.vehicles_df)
             if vehicle not in self.fleet:
                 print(f"Vehicle {vehicle_ID} not in fleet.")
                 return 
@@ -139,6 +138,19 @@ class Model:
             if vehicle_fuel_details.empty:
                 print(f"No fuel details found for {vehicle_ID} with {fuel_type}.")
                 return 
+
+            # Subtract distance traveled from yearly demand
+            # Based on size and distance buckets
+
+            # Size must == to
+            # Distace must >= than
+            
+            matrix = self.yearly_requirements.demand_matrix
+
+            for distance_bucket in matrix:
+                if distance_bucket <= vehicle.distance_bucket:
+                    matrix.loc[vehicle.size_bucket,
+                                     distance_bucket] -= distance
 
             consumption_rate = vehicle_fuel_details['Consumption (unit_fuel/km)'].item()
             fuel_price = self.fuels_df[(self.fuels_df['Fuel'] == fuel_type) & \
@@ -195,14 +207,12 @@ class Model:
 def main():
     dataframes = DF()
     model = Model(dataframes)
-    model.purchase_vehicle('BEV_S1_2023', 'Electrical')
-    for i in model.fleet:
-        print(i.ID)
-        print(i.fuel_type)
-        print(i.purchase_year)
-        print(i.yearly_range)
-        print(i.size_bucket)
-        print(i.distance_bucket)
+    model.purchase_vehicle('Diesel_S3_2023', 'HVO')
+
+    m = model.yearly_requirements.demand_matrix
+    print(m)
+    model.use_vehicle('Diesel_S3_2023', 'HVO', 100)
+    print(m)
 
 if __name__ == '__main__':
     main()
