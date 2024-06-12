@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import pandas as pd
+import gymnasium as gym 
 from pathlib import Path
 from os import getenv
 from collections import Counter
