@@ -32,15 +32,29 @@ class Model:
             ######## Distance Demands #########
             self.demand = demand_df[demand_df['Year'] == current_year]
             self.demand_km = self.demand['Demand (km)'].values
-            
             # Pivot Table to create demand_matrix
             self.demand_matrix = self.demand.pivot(index='Size', columns='Distance', values='Demand (km)')
+            self.demand_left = 0
 
             ######## Carbon Emission Limits ########
             self.emission_limit = carbon_emissions_df[
                     carbon_emissions_df['Year']== 2023]['Carbon emission CO2/kg'
                                                         ].item()
+            self.get_demand()
             return
+
+        def get_demand(self):
+            """
+                The assumption is that for every Dx < vehicle Dx
+                The corresponding vehicle Sx will decrement
+
+                E.g If a vehicle D4 S1 travels one mile, 
+                D1, D2, D3, D4 will decrement.
+            """
+            total = 0
+            for demand in self.demand_matrix:
+                total  += sum(self.demand_matrix[demand].values)
+            self.demand_left = total
 
     class Vehicle:
         def __init__(self, ID: str, fuel_type: str, vehicles_df):
@@ -100,6 +114,7 @@ class Model:
             vehicle = self.Vehicle(vehicle_ID, fuel_type, self.vehicles_df)
             self.total_costs += vehicle.purchase_price
             self.fleet.update({vehicle: 1})
+            #print(f"Purchased: {vehicle.ID}: {vehicle.fuel_type}")
             return 
 
         except Exception as e:
@@ -115,6 +130,7 @@ class Model:
                 self.fleet.subtract({vehicle: 1})
                 if self.fleet[vehicle] == 0:
                     del self.fleet[vehicle]
+                #print(f"Sold: {vehicle.ID}: {vehicle.fuel_type}")
             else:
                 print("Vehicle is not in Fleet")
                 return 
@@ -151,6 +167,7 @@ class Model:
                 if distance_bucket <= vehicle.distance_bucket:
                     matrix.loc[vehicle.size_bucket,
                                      distance_bucket] -= distance
+            self.yearly_requirements.get_demand()
 
             consumption_rate = vehicle_fuel_details['Consumption (unit_fuel/km)'].item()
             fuel_price = self.fuels_df[(self.fuels_df['Fuel'] == fuel_type) & \
@@ -164,6 +181,7 @@ class Model:
 
             self.total_costs += fuel_cost
             self.total_emissions += emissions
+            #print("Used: {vehicle.ID}: {vehicle.fuel_type}")
             return
 
         except Exception as e:
@@ -200,12 +218,12 @@ class Model:
         resale_value = (resale_rate / 100) * vehicle.purchase_price
         return resale_value
 
+
 ####################################################################
 def main():
     dataframes = DF()
     model = Model(dataframes)
-    fuel = model.vehicle_fuels_df
-    print(fuel[fuel['ID'] == 'LNG_S1_2023']['Fuel'].values)
+
 if __name__ == '__main__':
     main()
 
