@@ -132,7 +132,7 @@ class Model:
                     del self.fleet[vehicle]
                 #print(f"Sold: {vehicle.ID}: {vehicle.fuel_type}")
             else:
-                print("Vehicle is not in Fleet")
+                print(f"Cannot Sell {vehicle.ID}: is not in Fleet")
                 return 
 
         except Exception as e:
@@ -143,7 +143,7 @@ class Model:
         try:
             vehicle = self.Vehicle(vehicle_ID, fuel_type, self.vehicles_df)
             if vehicle not in self.fleet:
-                print(f"Vehicle {vehicle_ID} not in fleet.")
+                print(f"Connot Use {vehicle_ID}: not in fleet.")
                 return 
 
             vehicle_fuel_details = self.vehicle_fuels_df[
@@ -221,9 +221,21 @@ class Model:
 
 ####################################################################
 def main():
+    """
     dataframes = DF()
     model = Model(dataframes)
 
+    print("Episode Done")
+    print(f"Demand Left: {model.yearly_requirements.demand_left}")
+    print(f"Carbon Emissions: {model.total_emissions}")
+
+    for i in range(0, 3):
+        model.purchase_vehicle('LNG_S2_2023', 'LNG')
+    model.list_fleet()
+    model.use_vehicle('LNG_S2_2023', 'LNG', 106000)
+    print(f"Demand Left: {model.yearly_requirements.demand_left}")
+    print(f"Carbon Emissions: {model.total_emissions}")
+    """
 if __name__ == '__main__':
     main()
 

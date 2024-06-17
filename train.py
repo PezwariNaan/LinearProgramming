@@ -13,7 +13,7 @@ def main():
     env = gym.wrappers.RecordEpisodeStatistics(env, deque_size = 100)
 
     # Create the agent
-    model = PPO('MlpPolicy', env, verbose=1)
+    model = PPO('MlpPolicy', env, verbose=2)
 
     obs, _ = env.reset()
     # Train the agent
@@ -34,3 +34,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
