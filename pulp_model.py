@@ -1,97 +1,80 @@
 #!/usr/bin/env python3
 
-from shell import DF
-import pulp as p
+import pandas as pd
+import pulp as pl
+import numpy as np
 
-DATAFRAMES = DF()
+class Model:
+    # Load data
+    def __init__(self):
+        # Cost profiles isn't returned because we don't need it yet
+        dir = '/home/haxor/Documents/Competitions/Shell/dataset/CSV_Files/'
+        self.demand = pd.read_csv(dir + 'demand.csv')
+        self.vehicles = pd.read_csv(dir + 'vehicles.csv')
+        self.vehicle_fuels = pd.read_csv(dir + 'vehicle_fuels.csv')
+        self.fuels = pd.read_csv(dir + 'fuels.csv')
+        self.carbon_emissions = pd.read_csv(dir + 'carbon_emissions.csv')
+        self.cost_profiles = pd.read_csv(dir + 'cost_profiles.csv')
+        self.year = 2023
+        return 
 
-def getAge(ID:str, year:int) -> int:
-    vehicles = DATAFRAMES.vehicles
-    vehicle_year = vehicles.loc[vehicles['ID'] == ID]['Year'].item()
-    return year - vehicle_year + 1
+    def create_problem(self):
+        problem = pl.LpProblem(f"Fleet_Optimization_{self.year}", pl.LpMinimize)
+        
+        # Define decision variables
+        list_of_vehicles = self.vehicles[self.vehicles['Year'] == \
+                self.year]['ID'].values
 
-def ownershipCosts(ID:str, cost_type:str, year:int) -> int:
-    """
-        Insurance Cost
-        Resale Value
-        Maintenance Cost
-    """
-    cost_profiles = DATAFRAMES.cost_profiles
-    age = getAge(ID, year)
-    values = cost_profiles.loc[cost_profiles['End of Year'] == age]
-    return values[cost_type].item() / 100
+        vehicle_cost             = self.vehicles[self.vehicles['Year'] == \
+                self.year].set_index('ID')['Cost ($)'].to_dict()
+        print(vehicle_cost)
+        exit()
 
-def main():
-    year = 2023
-    #end_year = 2038
-    demand = 869181
-    emission_limit = 11677957
+        number_purchased         = None # Number Purchased
+        number_used              = None # Second Variable 
+        number_sold              = None # Third Variable
 
-    vehicles = DATAFRAMES.vehicles
-    vehicles = vehicles[vehicles['Year'] == year]
+        vehicle_name             = None 
+        vehicle_fueltype         = None
+        vehicle_range            = None
 
-    vehicle_fuels = DATAFRAMES.vehicle_fuels
-    vehicle_fuels = vehicle_fuels[vehicle_fuels['ID'].str.contains(".*_2023")]
+        fuel_price               = 0
+        fuel_consumption_rate    = 0
+        fuel_emission_rate       = 0
 
-    fuels = DATAFRAMES.fuels
-    fuels = fuels[fuels['Year'] == year]
+        cost_to_insure           = None # Probably a function 
+        cost_to_maintain         = None # Probably a function 
+        
+        distance_covered         = 0
+        carbon_emissions         = self.carbon_emissions[self.carbon_emissions['Year'] == \
+                self.year]['Carbon emission CO2/kg'].item()
+        
 
-    vehicle_fuels_dict = {}
+        # Set up constraints
+        problem += distance_covered * fuel_emission_rate  * \
+                fuel_consumption_rate  <= carbon_emissions
+        percentage_of_fleet_sold = None
 
-    # Extract relevant data
-    vehicle_ids = vehicles['ID'].tolist()
-    for id in vehicle_ids:
-        vehicle_fuels_dict[id] = vehicle_fuels.loc[vehicle_fuels['ID'] == id]\
-                .set_index('Fuel')['Consumption (unit_fuel/km)'].to_dict()
-    vehicle_fuels = vehicle_fuels_dict
+        # Define objective function
+        total_cost               = None
 
-    vehicle_costs = vehicles.set_index('ID')['Cost ($)'].to_dict()
-    vehicle_range = vehicles.set_index('ID')['Yearly range (km)'].to_dict()
-    fuel_costs = fuels.set_index('Fuel')['Cost ($/unit_fuel)'].to_dict()
-    emission_rates = fuels.set_index('Fuel')['Emissions (CO2/unit_fuel)'].to_dict()
-    insurance_costs = {}
-    maintenance_costs = {}
-    resale_value = {}
-
-    for vehicle in vehicle_ids:
-        insurance_costs[vehicle]   = vehicle_costs[vehicle] * ownershipCosts(vehicle, 'Insurance Cost %' , year)
-        maintenance_costs[vehicle] = vehicle_costs[vehicle] * ownershipCosts(vehicle, 'Maintenance Cost %' , year)
-        resale_value[vehicle]      = vehicle_costs[vehicle] * ownershipCosts(vehicle, 'Resale Value %' , year)
+        return problem
     
-    # Define the problem
-    problem = p.LpProblem("Shell_V1", p.LpMinimize)
+    def update_fleet(self):
+        pass
 
-    vehicle_vars = p.LpVariable.dicts("Vehicle", vehicle_ids, lowBound=0, cat='Integer')
+    # Implement rolling horizon approach
+    def rolling_horizon_optimization(self, start_year, end_year, horizon):
+        fleet = {} # Dictionary  = Vehicle : Count
+        for year in range(start_year, end_year + 1):
+            model = self.create_problem()
+            model.solve()
+            self.update_fleet()
 
-    # Define the objective function: Minimize total cost
-    total_cost = p.lpSum([vehicle_vars[v_id] * vehicle_costs[v_id] for v_id in vehicle_ids]) + \
-                 p.lpSum([vehicle_vars[v_id] * vehicle_range[v_id] * vehicle_fuels[v_id][fuel] * \
-                 fuel_costs[fuel] for v_id in vehicle_ids for fuel in vehicle_fuels[v_id]]) + \
-                 p.lpSum([vehicle_vars[v_id] * insurance_costs[v_id] for v_id in insurance_costs]) + \
-                 p.lpSum([vehicle_vars[v_id] * maintenance_costs[v_id] for v_id in maintenance_costs]) - \
-                 p.lpSum([vehicle_vars[v_id] * resale_value[v_id] for v_id in resale_value]) 
+# Main function
+def main():
+    model = Model()
+    model.rolling_horizon_optimization(2023, 2038, 5)
 
-
-    problem += total_cost, "Total Cost"
-    print(problem)
-
-    total_demand_met = p.lpSum([vehicle_vars[v_id] * vehicle_range[v_id] for v_id in vehicle_ids])
-    problem += total_demand_met >= demand, "Demand Constraint"
-
-    total_emissions = p.lpSum([vehicle_vars[v_id] * vehicle_range[v_id] * vehicle_fuels[v_id][fuel] * \
-            emission_rates[fuel] for v_id in vehicle_ids for fuel in vehicle_fuels[v_id]])
-    problem += total_emissions <= emission_limit, "Emission Constraint"
-    print(problem)
-
-    # Solve the problem
-    problem.solve()
-
-    # Print the results
-    print(f"Status: {p.LpStatus[problem.status]}")
-    for v_id in vehicle_ids:
-        print(f"{v_id}: {p.value(vehicle_vars[v_id])}")
-    print(f"Total Cost: ${p.value(problem.objective):.2f}")
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
-
