@@ -24,9 +24,8 @@ class Model:
                 return self.id == other.id and self.fuel == other.fuel
             return False
 
-    # Load data
+    ######################## LOAD DATA #########################
     def __init__(self):
-        # Cost profiles isn't returned because we don't need it yet
         dir = '/home/haxor/Documents/Competitions/Shell/dataset/CSV_Files/'
         self.demand = pd.read_csv(dir + 'demand.csv')
         self.vehicles = pd.read_csv(dir + 'vehicles.csv')
@@ -37,9 +36,9 @@ class Model:
         self.year = 2023
 
     def create_problem(self):
+        ######################### SETUP #############################
         problem = pl.LpProblem(f"Fleet_Optimization_{self.year}", pl.LpMinimize)
         
-        # Define decision variables
         list_of_vehicles = []
 
         #fueltype = {ID: {fuel: consumption_rate}}
@@ -52,6 +51,7 @@ class Model:
             for fuel in vehicle_fueltype[vehicle]:
                 list_of_vehicles.append(self.Vehicle(vehicle, fuel))
 
+        ######################## DEFINE DECISION VARIABLES #############################
         number_purchased = {vehicle: pl.LpVariable(f"num_purchased_{vehicle}", lowBound=0, cat="Integer") \
                 for vehicle in list_of_vehicles}
 
@@ -61,21 +61,38 @@ class Model:
         number_sold = {vehicle: pl.LpVariable(f"num_sold_{vehicle}", lowBound=0, cat="Integer") \
                 for vehicle in list_of_vehicles}
 
+        ################################# VEHICLE | FUEL VALUES #############################
+
         vehicle_cost = self.vehicles[self.vehicles['Year'] == \
                 self.year].set_index('ID')['Cost ($)'].to_dict()
+
+        vehicle_age = (self.vehicles.set_index('ID')['Year'] - self.year + 1).to_dict()
+
+        vehicle_max_range = self.vehicles[self.vehicles['Year'] == self.year]\
+                .set_index('ID')['Yearly range (km)'].to_dict()
+
+        vehicle_distance = self.vehicles[self.vehicles['Year'] == self.year]\
+                .set_index('ID')['Distance'].to_dict()
+
+        vehicle_size = self.vehicles[self.vehicles['Year'] == self.year]\
+                .set_index('ID')['Size'].to_dict()
 
         fuel_price = self.fuels[self.fuels['Year'] == self.year]\
                 .set_index('Fuel')['Cost ($/unit_fuel)'].to_dict()
 
         fuel_emission_rate = self.fuels[self.fuels['Year'] == self.year]\
                 .set_index('Fuel')['Emissions (CO2/unit_fuel)'].to_dict()
-        
-        distance_covered = 0 # some float between 0 and 1 * yearly_range * number_vehicles_used
+
+        ############################# DEMANDS ##############################
 
         carbon_limit = self.carbon_emissions[self.carbon_emissions['Year'] == \
                 self.year]['Carbon emission CO2/kg'].item()
 
-        vehicle_age = (self.vehicles.set_index('ID')['Year'] - self.year + 1).to_dict()
+        demand_matrix = self.demand[self.demand['Year'] == self.year]\
+                .pivot(index='Size', columns='Distance', values='Demand (km)')
+        yearly_demand = demand_matrix.sum().sum()
+
+        ############################# YEARLY FLEET COSTS ###############################
 
         cost_to_insure   = {vehicle: vehicle_cost[vehicle.id] * self.cost_profiles[self.cost_profiles['End of Year'] == \
                 vehicle_age[vehicle.id]]['Insurance Cost %'].item() / 100 for vehicle in list_of_vehicles}
@@ -86,13 +103,9 @@ class Model:
         sale_price = {vehicle: vehicle_cost[vehicle.id] * self.cost_profiles[self.cost_profiles['End of Year'] == \
                 vehicle_age[vehicle.id]]['Resale Value %'].item() / 100 for vehicle in list_of_vehicles} 
         
-        # Ensure distance vehicle travels is less than the yearly_range
-        vehicle_max_range = self.vehicles[self.vehicles['Year'] == self.year]\
-                .set_index('ID')['Yearly range (km)'].to_dict()
+        ############################ CONSTRAINTS ###################################
 
-        # Set up constraints
-
-        # Use / Sell constraints
+        # Use / Sell constraints - Can't use / sell more than owned
         for vehicle in list_of_vehicles:
             problem += number_used[vehicle] <= number_purchased[vehicle], f"Use_Constraint_{vehicle}"
             problem += number_sold[vehicle] <= number_purchased[vehicle], f"Sell_Constraint_{vehicle}"
@@ -100,12 +113,10 @@ class Model:
          # Emission constraint
         total_emissions = pl.lpSum([number_used[vehicle] * vehicle_fueltype[vehicle.id][vehicle.fuel] * fuel_emission_rate[vehicle.fuel] 
                                     for vehicle in list_of_vehicles])
+
         problem += total_emissions <= carbon_limit, "Total_Emission_Constraint"
 
         # Demand must reach 0
-        # Distance bucket >= demand bucket
-
-        # Size bucket == size bucket
 
         # Must sell vehicle at ten year point
         for vehicle in list_of_vehicles:
@@ -118,7 +129,7 @@ class Model:
         problem += pl.lpSum(number_sold.values()) <= 0.2 * \
                 pl.lpSum(number_purchased.values()), "Fleet_Sell_Constraint"
 
-        # Objective Function
+        ############################# OBJECTIVE FUNCTION ###############################
         total_cost = pl.lpSum([number_purchased[vehicle] * vehicle_cost[vehicle.id] + 
                                    number_used[vehicle] * (sum(fuel_price[vehicle.fuel] * vehicle_fueltype[vehicle.id][vehicle.fuel] \
                                            for vehicle in list_of_vehicles) + cost_to_maintain[vehicle] + cost_to_insure[vehicle]) - \
@@ -130,9 +141,9 @@ class Model:
         print(self.problem)
         exit()
 
-        return problem
+        return self.problem
     
-    # Implement rolling horizon approach
+    ######################### IMPLEMENT ROLLING HORIZON APPROACH ####################
     def rolling_horizon_optimization(self, start_year, end_year, horizon):
         fleet = {} # Dictionary  = Vehicle : Count
         for year in range(start_year, end_year + 1):
