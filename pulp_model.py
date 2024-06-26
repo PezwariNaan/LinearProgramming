@@ -27,7 +27,7 @@ class Model:
 
         number_purchased = {vehicle: pl.LpVariable(f"num_purchased_{vehicle}", lowBound=0, cat="Integer") \
                 for vehicle in list_of_vehicles}
-        
+
         number_used = {vehicle: pl.LpVariable(f"num_used_{vehicle}", lowBound= 0, cat="Integer") \
                 for vehicle in list_of_vehicles}
 
@@ -43,47 +43,69 @@ class Model:
             include_groups = False
         ).to_dict()
 
-        fuel_price  = self.fuels[self.fuels['Year'] == self.year]\
+        fuel_price = self.fuels[self.fuels['Year'] == self.year]\
                 .set_index('Fuel')['Cost ($/unit_fuel)'].to_dict()
 
         fuel_emission_rate = self.fuels[self.fuels['Year'] == self.year]\
                 .set_index('Fuel')['Emissions (CO2/unit_fuel)'].to_dict()
         
-        distance_covered = 0
+        distance_covered = 0 # some float between 0 and 1 * yearly_range * number_vehicles_used
 
         carbon_limit = self.carbon_emissions[self.carbon_emissions['Year'] == \
                 self.year]['Carbon emission CO2/kg'].item()
 
-        cost_to_insure   = None # Probably a function 
-        cost_to_maintain = None # Probably a function 
-        sale_price       = None # Probably a function 
-        
-        # Set up constraints
-        """
-        problem += distance_covered * fuel_emission_rate  * \
-                fuel_consumption_rate  <= carbon_limit
-        """
-        # Must sell less than 20% of fleet per year
-        percentage_of_fleet_sold = None
+        vehicle_age = (self.vehicles.set_index('ID')['Year'] - self.year + 1).to_dict()
 
-        # Make sure vehicles used and sold are owned
+        cost_to_insure   = {vehicle: vehicle_cost[vehicle] * self.cost_profiles[self.cost_profiles['End of Year'] == \
+                vehicle_age[vehicle]]['Insurance Cost %'].item() / 100 for vehicle in list_of_vehicles}
+
+        cost_to_maintain = {vehicle: vehicle_cost[vehicle] * self.cost_profiles[self.cost_profiles['End of Year'] == \
+                vehicle_age[vehicle]]['Maintenance Cost %'].item() / 100 for vehicle in list_of_vehicles} 
+
+        sale_price = {vehicle: vehicle_cost[vehicle] * self.cost_profiles[self.cost_profiles['End of Year'] == \
+                vehicle_age[vehicle]]['Resale Value %'].item() / 100 for vehicle in list_of_vehicles} 
+        
+        # Ensure distance vehicle travels is less than the yearly_range
+        vehicle_max_range = self.vehicles[self.vehicles['Year'] == self.year]\
+                .set_index('ID')['Yearly range (km)'].to_dict()
+
+        # Set up constraints
+
+        # Use / Sell constraints
         for vehicle in list_of_vehicles:
             problem += number_used[vehicle] <= number_purchased[vehicle], f"Use_Constraint_{vehicle}"
             problem += number_sold[vehicle] <= number_purchased[vehicle], f"Sell_Constraint_{vehicle}"
 
-        self.number_purchased = number_purchased
-        self.number_used = number_used
-        self.number_sold = number_sold
+         # Emission constraint
+        total_emissions = pl.lpSum([number_used[vehicle] * vehicle_fueltype[vehicle][fuel] * fuel_emission_rate[fuel] 
+                                    for vehicle in list_of_vehicles for fuel in vehicle_fueltype[vehicle]])
+        problem += total_emissions <= carbon_limit, "Total_Emission_Constraint"
 
-        # Ensure distance vehicle travels is less than the yearly_range
-        vehicle_max_range = self.vehicles[self.vehicles['Year'] == self.year]\
-                .set_index('ID')['Yearly range (km)'].to_dict()
-        
-        print(problem)
+        # Distance bucket >= demand bucket
+
+        # Size bucket == size bucket
+
+        # Must sell vehicle at ten year point
+        for vehicle in list_of_vehicles:
+                    if vehicle_age[vehicle] >= 10:
+                        problem += number_sold[vehicle] ==\
+                                number_purchased[vehicle], f"Age_Limit_Constraint_{vehicle}"
+
+
+        # Must sell less than 20% of fleet per year
+        problem += pl.lpSum(number_sold.values()) <= 0.2 * \
+                pl.lpSum(number_purchased.values()), "Fleet_Sell_Constraint"
+
+        # Objective Function
+        total_cost = pl.lpSum([number_purchased[vehicle] * vehicle_cost[vehicle] + 
+                                   number_used[vehicle] * (sum(fuel_price[fuel] * vehicle_fueltype[vehicle][fuel] for fuel in vehicle_fueltype[vehicle]) + cost_to_maintain[vehicle]) - 
+                                   number_sold[vehicle] * sale_price[vehicle] for vehicle in list_of_vehicles])
+
+        problem += total_cost, "Total Cost"
+
+        self.problem = problem
+        print(self.problem)
         exit()
-
-        # Define objective function
-        total_cost               = None
 
         return problem
     
