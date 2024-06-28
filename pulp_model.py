@@ -39,7 +39,7 @@ class Model:
         ######################### SETUP #############################
         problem = pl.LpProblem(f"Fleet_Optimization_{self.year}", pl.LpMinimize)
         
-        list_of_vehicles = []
+        self.list_of_vehicles = []
 
         #fueltype = {ID: {fuel: consumption_rate}}
         vehicle_fueltype = self.vehicle_fuels[self.vehicle_fuels['ID'].str.contains(str(self.year))].groupby('ID').apply(
@@ -49,17 +49,20 @@ class Model:
 
         for vehicle in vehicle_fueltype:
             for fuel in vehicle_fueltype[vehicle]:
-                list_of_vehicles.append(self.Vehicle(vehicle, fuel))
+                self.list_of_vehicles.append(self.Vehicle(vehicle, fuel))
 
         ######################## DEFINE DECISION VARIABLES #############################
-        number_purchased = {vehicle: pl.LpVariable(f"num_purchased_{vehicle}", lowBound=0, cat="Integer") \
-                for vehicle in list_of_vehicles}
+        self.number_purchased = {vehicle: pl.LpVariable(f"num_purchased_{vehicle}", lowBound=0, cat="Integer") \
+                for vehicle in self.list_of_vehicles}
 
-        number_used = {vehicle: pl.LpVariable(f"num_used_{vehicle}", lowBound= 0, cat="Integer") \
-                for vehicle in list_of_vehicles}
+        self.number_used = {vehicle: pl.LpVariable(f"num_used_{vehicle}", lowBound= 0, cat="Integer") \
+                for vehicle in self.list_of_vehicles}
 
-        number_sold = {vehicle: pl.LpVariable(f"num_sold_{vehicle}", lowBound=0, cat="Integer") \
-                for vehicle in list_of_vehicles}
+        self.number_sold = {vehicle: pl.LpVariable(f"num_sold_{vehicle}", lowBound=0, cat="Integer") \
+                for vehicle in self.list_of_vehicles}
+
+        #percentage_used = {vehicle: pl.LpVariable(f"percentage_used_{vehicle}", lowBound=0, upBound=100, cat="Integer") \
+        #        for vehicle in self.list_of_vehicles}
 
         ################################# VEHICLE | FUEL VALUES #############################
 
@@ -90,56 +93,61 @@ class Model:
 
         demand_matrix = self.demand[self.demand['Year'] == self.year]\
                 .pivot(index='Size', columns='Distance', values='Demand (km)')
-        yearly_demand = demand_matrix.sum().sum()
+
+        #yearly_demand = demand_matrix.sum().sum()
 
         ############################# YEARLY FLEET COSTS ###############################
 
         cost_to_insure   = {vehicle: vehicle_cost[vehicle.id] * self.cost_profiles[self.cost_profiles['End of Year'] == \
-                vehicle_age[vehicle.id]]['Insurance Cost %'].item() / 100 for vehicle in list_of_vehicles}
+                vehicle_age[vehicle.id]]['Insurance Cost %'].item() / 100 for vehicle in self.list_of_vehicles}
 
         cost_to_maintain = {vehicle: vehicle_cost[vehicle.id] * self.cost_profiles[self.cost_profiles['End of Year'] == \
-                vehicle_age[vehicle.id]]['Maintenance Cost %'].item() / 100 for vehicle in list_of_vehicles} 
+                vehicle_age[vehicle.id]]['Maintenance Cost %'].item() / 100 for vehicle in self.list_of_vehicles} 
 
         sale_price = {vehicle: vehicle_cost[vehicle.id] * self.cost_profiles[self.cost_profiles['End of Year'] == \
-                vehicle_age[vehicle.id]]['Resale Value %'].item() / 100 for vehicle in list_of_vehicles} 
+                vehicle_age[vehicle.id]]['Resale Value %'].item() / 100 for vehicle in self.list_of_vehicles} 
         
+        total_emissions = pl.lpSum([self.number_used[vehicle] * vehicle_fueltype[vehicle.id][vehicle.fuel] * \
+                 fuel_emission_rate[vehicle.fuel] for vehicle in self.list_of_vehicles])
+
         ############################ CONSTRAINTS ###################################
 
         # Use / Sell constraints - Can't use / sell more than owned
-        for vehicle in list_of_vehicles:
-            problem += number_used[vehicle] <= number_purchased[vehicle], f"Use_Constraint_{vehicle}"
-            problem += number_sold[vehicle] <= number_purchased[vehicle], f"Sell_Constraint_{vehicle}"
-
-         # Emission constraint
-        total_emissions = pl.lpSum([number_used[vehicle] * vehicle_fueltype[vehicle.id][vehicle.fuel] * fuel_emission_rate[vehicle.fuel] 
-                                    for vehicle in list_of_vehicles])
+        for vehicle in self.list_of_vehicles:
+            problem += self.number_used[vehicle] <= self.number_purchased[vehicle], f"Use_Constraint_{vehicle}"
+            problem += self.number_sold[vehicle] <= self.number_purchased[vehicle], f"Sell_Constraint_{vehicle}"
 
         problem += total_emissions <= carbon_limit, "Total_Emission_Constraint"
 
-        # Demand must reach 0
-
+        """
+        for size in demand_matrix.index:
+            for distance in demand_matrix.columns:
+                demand = demand_matrix.at[size, distance]
+                problem += pl.lpSum([self.number_used[vehicle] * vehicle_max_range[vehicle.id] 
+                                     for vehicle in self.list_of_vehicles if vehicle_size[vehicle.id] == size and vehicle_distance[vehicle.id] >= distance]) == \
+                            demand, f"Demand_Constraint_{size}_{distance}"
+        exit()
+        """
         # Must sell vehicle at ten year point
-        for vehicle in list_of_vehicles:
+        for vehicle in self.list_of_vehicles:
                     if vehicle_age[vehicle.id] >= 10:
-                        problem += number_sold[vehicle] ==\
-                                number_purchased[vehicle], f"Age_Limit_Constraint_{vehicle.id}"
-
+                        problem += self.number_sold[vehicle] ==\
+                                self.number_purchased[vehicle], f"Age_Limit_Constraint_{vehicle.id}"
 
         # Must sell less than 20% of fleet per year
-        problem += pl.lpSum(number_sold.values()) <= 0.2 * \
-                pl.lpSum(number_purchased.values()), "Fleet_Sell_Constraint"
+        problem += pl.lpSum(self.number_sold.values()) <= 0.2 * \
+                pl.lpSum(self.number_purchased.values()), "Fleet_Sell_Constraint"
 
         ############################# OBJECTIVE FUNCTION ###############################
-        total_cost = pl.lpSum([number_purchased[vehicle] * vehicle_cost[vehicle.id] + 
-                                   number_used[vehicle] * (sum(fuel_price[vehicle.fuel] * vehicle_fueltype[vehicle.id][vehicle.fuel] \
-                                           for vehicle in list_of_vehicles) + cost_to_maintain[vehicle] + cost_to_insure[vehicle]) - \
-                                   number_sold[vehicle] * sale_price[vehicle] for vehicle in list_of_vehicles])
+        # Need to add fuel usage to total_cost
+        total_cost = pl.lpSum([self.number_purchased[vehicle] * vehicle_cost[vehicle.id] + 
+                                   self.number_used[vehicle] * (sum(fuel_price[vehicle.fuel] * vehicle_fueltype[vehicle.id][vehicle.fuel] \
+                                           for vehicle in self.list_of_vehicles) + cost_to_maintain[vehicle] + cost_to_insure[vehicle]) - \
+                                   self.number_sold[vehicle] * sale_price[vehicle] for vehicle in self.list_of_vehicles])
 
         problem += total_cost, "Total Cost"
 
         self.problem = problem
-        print(self.problem)
-        exit()
 
         return self.problem
     
@@ -149,12 +157,38 @@ class Model:
         for year in range(start_year, end_year + 1):
             model = self.create_problem()
             model.solve()
-            self.update_fleet()
+        return 
+
+    ######################## GET RESULTS ######################
+    def solve_problem(self):
+        self.problem.solve()
+        return self.problem.status
+
+    def save_results(self, filepath):
+        results = []
+
+        for vehicle in self.list_of_vehicles:
+            results.append({
+                'vehicle_id': vehicle.id,
+                'fuel': vehicle.fuel,
+                'number_purchased': self.number_purchased[vehicle].varValue,
+                'number_used': self.number_used[vehicle].varValue,
+                'number_sold': self.number_sold[vehicle].varValue
+            })
+
+        results_df = pd.DataFrame(results)
+        results_df.to_csv(filepath, index=False)
 
 # Main function
 def main():
     model = Model()
-    model.rolling_horizon_optimization(2023, 2038, 5)
+    model.create_problem()
+    status = model.solve_problem()
+
+    if status == pl.LpStatusOptimal:
+        model.save_results('/home/haxor/Documents/Competitions/Shell/Code/Python/src/Model/results.csv')
+    else:
+        print("The problem does not have an optimal solution.")
 
 if __name__ == "__main__":
     main()
