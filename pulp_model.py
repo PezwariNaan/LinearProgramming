@@ -73,10 +73,10 @@ class Model:
 
         vehicle_age = (self.vehicles.set_index('ID')['Year'] - self.year + 1).to_dict()
 
-        vehicle_max_range = self.vehicles[self.vehicles['Year'] == self.year]\
+        self.vehicle_max_range = self.vehicles[self.vehicles['Year'] == self.year]\
                 .set_index('ID')['Yearly range (km)'].to_dict()
 
-        vehicle_distance = self.vehicles[self.vehicles['Year'] == self.year]\
+        self.vehicle_distance = self.vehicles[self.vehicles['Year'] == self.year]\
                 .set_index('ID')['Distance'].to_dict()
 
         vehicle_size = self.vehicles[self.vehicles['Year'] == self.year]\
@@ -131,9 +131,9 @@ class Model:
         for size in demand_matrix.index:
             for distance in demand_matrix.columns:
                 demand = demand_matrix.at[size, distance]
-                problem += pl.lpSum([self.number_used[vehicle] * vehicle_max_range[vehicle.id] \
+                problem += pl.lpSum([self.number_used[vehicle] * self.vehicle_max_range[vehicle.id] \
                         for vehicle in self.list_of_vehicles if vehicle_size[vehicle.id] == \
-                        size and vehicle_distance[vehicle.id] >= distance]) >= demand, f"Demand_Satisfied_{size}_{distance}"
+                        size and self.vehicle_distance[vehicle.id] >= distance]) >= demand, f"Demand_Satisfied_{size}_{distance}"
 
         # Must sell vehicle at ten year point
         for vehicle in self.list_of_vehicles:
@@ -149,7 +149,7 @@ class Model:
 
         # Need to add fuel usage to total_cost
         total_cost = pl.lpSum([self.number_purchased[vehicle] * vehicle_cost[vehicle.id] + \
-                               self.number_used[vehicle] * (sum(fuel_price[vehicle.fuel] * vehicle_fueltype[vehicle.id][vehicle.fuel] * vehicle_max_range[vehicle.id] \
+                               self.number_used[vehicle] * (sum(fuel_price[vehicle.fuel] * vehicle_fueltype[vehicle.id][vehicle.fuel] * self.vehicle_max_range[vehicle.id] \
                                        for vehicle in self.list_of_vehicles) + cost_to_maintain[vehicle] + cost_to_insure[vehicle]) - \
                                self.number_sold[vehicle] * sale_price[vehicle] for vehicle in self.fleet])
 
@@ -182,17 +182,46 @@ class Model:
 
                     # Append results for each vehicle
                     for vehicle in self.list_of_vehicles:
-                        results.append({
-                            'vehicle_id': vehicle.id,
-                            'fuel': vehicle.fuel,
-                            'number_purchased': self.number_purchased[vehicle].varValue,
-                            'number_used': self.number_used[vehicle].varValue,
-                            'number_sold': self.number_sold[vehicle].varValue,
-                            'Year': current_year
-                        })
+                        if self.number_purchased[vehicle]:
+                            results.append({
+                                'Year': current_year,
+                                'ID': vehicle.id,
+                                'Num_Vehicles': self.number_purchased[vehicle].varValue, #values() also works
+                                'Type': 'Buy',
+                                'Fuel': vehicle.fuel,
+                                'Distance_bucket': None,
+                                'Distance_per_vehicle(km)': 0,
+                                })
+
+                            if self.number_used[vehicle]:
+                                results.append({
+                                    'Year': current_year,
+                                    'ID': vehicle.id,
+                                    'Num_Vehicles': self.number_used[vehicle].varValue,
+                                    'Type': "Use",
+                                    'Fuel': vehicle.fuel,
+                                    'Distance_bucket': self.vehicle_distance[vehicle.id],
+                                    'Distance_per_vehicle(km)': self.vehicle_max_range[vehicle.id],
+                                })
+
+                            if self.number_sold[vehicle]:
+                                results.append({
+                                    'Year': current_year,
+                                    'ID': vehicle.id,
+                                    'Num_Vehicles': self.number_sold[vehicle].varValue,
+                                    'Type': "Sell",
+                                    'Fuel': None,
+                                    'Distance_bucket': None,
+                                    'Distance_per_vehicle(km)': None
+                                })
 
         # Save all results to a CSV file after the loop
         results_df = pd.DataFrame(results)
+        results_df['Type'] = pd.Categorical(results_df['Type'], 
+                                            categories = ['Buy', 'Use', 'Sell'], 
+                                            ordered = True)
+
+        results_df = results_df.sort_values(by=['Year', 'Type'])
         results_df.to_csv(filename, index=False)
 
         print(f"Results saved to {filename}")
