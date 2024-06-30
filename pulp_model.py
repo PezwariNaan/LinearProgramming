@@ -113,7 +113,7 @@ class Model:
                 vehicle_age[vehicle.id]]['Resale Value %'].item() / 100 for vehicle in self.list_of_vehicles} 
         
         total_emissions = pl.lpSum([self.number_used[vehicle] * vehicle_fueltype[vehicle.id][vehicle.fuel] * \
-                 fuel_emission_rate[vehicle.fuel] for vehicle in self.list_of_vehicles])
+                 fuel_emission_rate[vehicle.fuel] * self.vehicle_max_range[vehicle.id] for vehicle in self.list_of_vehicles])
 
         ############################ CONSTRAINTS ###################################
 
