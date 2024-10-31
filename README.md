@@ -15,7 +15,7 @@ This repository contains an optimization model for managing a vehicle fleet with
 - **Python 3**: Primary language for implementing the model.
 - **pandas**: Manages and processes data files.
 - **pulp**: Linear programming library for setting up and solving the optimization problem.
-- **NumPy**: Used for numerical operations, if required by the model.
+- **NumPy**: Used for numerical operations.
 
 ## 📊 Data Files
 
